@@ -777,6 +777,17 @@ impl Parser {
     /// Add OSC param separator.
     #[inline]
     fn action_osc_put_param(&mut self) {
+        if self.osc_num_params == 2 {
+            let (start, end) = self.osc_params[0];
+            if self.osc_raw.slice(start, end) == b"8" {
+                self.osc_raw.push(b';');
+                return;
+            }
+        }
+        self.push_osc_param();
+    }
+
+    fn push_osc_param(&mut self) {
         let idx = self.osc_raw.len();
 
         let param_idx = self.osc_num_params;
@@ -804,7 +815,7 @@ impl Parser {
     }
 
     fn osc_end<P: Perform>(&mut self, performer: &mut P, byte: u8) {
-        self.action_osc_put_param();
+        self.push_osc_param();
         self.osc_dispatch(performer, byte);
         self.osc_raw.clear();
         self.osc_num_params = 0;
@@ -1909,6 +1920,27 @@ mod tests {
             Sequence::Osc(..) => (),
             _ => panic!("expected osc sequence"),
         }
+    }
+
+    #[test]
+    fn osc8_uri_preserves_semicolons() {
+        let mut dispatcher = Dispatcher::default();
+        let mut parser = Parser::default();
+        parser.advance(
+            &mut dispatcher,
+            b"\x1b]8;id=link;https://example.org/a;b?x=1\x07",
+        );
+        assert_eq!(
+            dispatcher.dispatched,
+            vec![Sequence::Osc(
+                vec![
+                    b"8".to_vec(),
+                    b"id=link".to_vec(),
+                    b"https://example.org/a;b?x=1".to_vec()
+                ],
+                true,
+            )]
+        );
     }
 
     #[test]
